@@ -59,6 +59,7 @@ const DEFAULTS = Object.freeze({
     showModelOnCoin: true,
     trackBackground: true,
     trackEmbeddings: true,
+    embeddingCoins: false,
     position: null,
     customPrices: '',
     stats: null,
@@ -728,15 +729,16 @@ function flushEmbeddings() {
         aborted: false,
     };
     recordStats(batch.record, entry);
-    ui.launchCoin({
-        kind: 'input',
-        label: t('coin_embedding'),
-        usd,
-        tokens: batch.tokens,
-        model: batch.model,
-        estimated: entry.accuracy === 'estimated',
-        background: true,
-    });
+    // Vector Storage also re-syncs the chat on edits, deletions and swipes: counted silently unless asked for
+    if (settings().embeddingCoins) {
+        ui.launchCoin({
+            kind: 'embedding',
+            usd,
+            tokens: batch.tokens,
+            model: batch.model,
+            estimated: entry.accuracy === 'estimated',
+        });
+    }
     ui.update();
 }
 

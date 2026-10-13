@@ -231,7 +231,7 @@ export class WalletUI {
 
     /**
      * @param {object} coin
-     * @param {'input'|'output'|'refund'} coin.kind
+     * @param {'input'|'output'|'refund'|'embedding'} coin.kind
      * @param {number|null} coin.usd Amount (null when the price is unknown)
      * @param {number} [coin.tokens]
      * @param {string} [coin.model]
@@ -273,7 +273,8 @@ export class WalletUI {
         label.appendChild(amount);
 
         const caption = [];
-        caption.push(coin.label || (coin.kind === 'input' ? t('coin_input') : coin.kind === 'output' ? t('coin_output') : t('refund')));
+        const kindLabel = { input: t('coin_input'), output: t('coin_output'), refund: t('refund'), embedding: t('coin_embedding') }[coin.kind];
+        caption.push(coin.label || kindLabel);
         if (coin.kind !== 'refund' && coin.tokens !== undefined && coin.usd !== null && coin.usd !== undefined) {
             caption.push(`${formatTokens(coin.tokens)} ${t('tok')}`);
         }
@@ -294,8 +295,9 @@ export class WalletUI {
         const up = origin.rect.top > 190 ? -1 : 1;
         // Input coins fly higher and further than output coins, so two coins in a row do not overlap
         const isInput = coin.kind === 'input';
-        const drift = (leftSide ? -1 : 1) * (isInput ? 34 + Math.random() * 18 : 8 + Math.random() * 14);
-        const rise = isInput ? 172 + Math.random() * 14 : 138 + Math.random() * 14;
+        const isEmbedding = coin.kind === 'embedding';
+        const drift = (leftSide ? -1 : 1) * (isInput ? 34 + Math.random() * 18 : isEmbedding ? 22 + Math.random() * 10 : 8 + Math.random() * 14);
+        const rise = isInput ? 172 + Math.random() * 14 : isEmbedding ? 118 + Math.random() * 12 : 138 + Math.random() * 14;
 
         let keyframes;
         if (coin.kind === 'refund') {
