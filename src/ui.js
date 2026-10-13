@@ -239,6 +239,7 @@ export class WalletUI {
      * @param {boolean} [coin.background]
      * @param {string} [coin.note] Second caption line
      * @param {string} [coin.label] Caption instead of "input"/"output" (e.g. "embeddings")
+     * @param {string} [coin.via] Extension that sent a background request
      */
     launchCoin(coin) {
         const now = performance.now();
@@ -279,7 +280,7 @@ export class WalletUI {
             caption.push(`${formatTokens(coin.tokens)} ${t('tok')}`);
         }
         if (coin.usd === null || coin.usd === undefined) caption.push(t('no_price'));
-        if (coin.background && !coin.label) caption.push(t('bg'));
+        if (coin.background && !coin.label) caption.push(coin.via ? `${t('bg')}: ${coin.via}` : t('bg'));
         if (s.showModelOnCoin && coin.model) caption.push(shortModel(coin.model));
         label.appendChild(el('div', 'tw-coin-caption', caption.join(' · ')));
         if (coin.note) label.appendChild(el('div', 'tw-coin-note', coin.note));
@@ -465,16 +466,16 @@ export class WalletUI {
         const historyHtml = rows.map((item) => {
             const tags = [];
             if (item.type === 'embedding') tags.push(item.count > 1 ? `${t('tag_embedding')} ×${item.count}` : t('tag_embedding'));
-            else if (item.bg) tags.push(t('bg'));
-            if (item.failed) tags.push(t('tag_failed'));
+            else if (item.bg) tags.push(item.via ? shortTag(item.via) : t('bg'));
+            const source = item.via ? `\n${t('sent_by')}: ${item.via}` : '';
             const tooltip = item.failed
-                ? `${item.model}\n${typeLabel(item)}\n${t('failed_hint')}\n${item.reason || ''}`
-                : `${item.model}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`;
+                ? `${item.model}\n${typeLabel(item)}${source}\n${t('failed_hint')}\n${t('error')}: ${item.reason || '?'}\n${t('server_log_hint')}`
+                : `${item.model}${source}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`;
             return `
             <div class="tw-hist${item.failed ? ' tw-hist--failed' : ''}" title="${escapeHtml(tooltip)}">
                 <span class="tw-dim">${escapeHtml(formatTime(item.t))}</span>
                 <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${tags.map(tag => ` <span class="tw-tag">${escapeHtml(tag)}</span>`).join('')}</span>
-                <span class="tw-num">${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}</span>
+                <span class="tw-num">${item.failed ? escapeHtml(t('tag_failed')) : `${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}`}</span>
             </div>`;
         }).join('');
 
@@ -576,6 +577,12 @@ function accuracyText(entry) {
         case 'estimated': return t('estimated');
         default: return t('no_price_hint');
     }
+}
+
+/** Extension name for a small history tag */
+function shortTag(name) {
+    const last = String(name).split(' → ')[0];
+    return last.length > 20 ? `${last.slice(0, 19)}…` : last;
 }
 
 function typeLabel(entry) {

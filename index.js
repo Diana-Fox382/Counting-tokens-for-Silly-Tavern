@@ -234,6 +234,18 @@ function lookupPrice(source, models, preferCatalog = false) {
     return (preferCatalog ? (fromCatalog() || fromCustom()) : (fromCustom() || fromCatalog())) || fromFallback();
 }
 
+/** Readable names of the extensions that sent a request (Summarize, Character Expressions...) */
+function initiatorName(info) {
+    const names = (info?.initiators || []).map((name) => {
+        try {
+            return ctx().getExtensionManifest?.(name)?.display_name || name.replace(/^third-party\//, '');
+        } catch {
+            return name.replace(/^third-party\//, '');
+        }
+    });
+    return names.length ? names.join(' → ') : null;
+}
+
 function guessTokens(text) {
     return Math.ceil(String(text || '').length / 3.35);
 }
@@ -519,6 +531,7 @@ async function launchEstimatedInputCoin(record) {
         model: record.info.model,
         estimated: true,
         background: record.background,
+        via: initiatorName(record.info),
     });
 }
 
@@ -559,7 +572,7 @@ async function finishRecord(record, result) {
         awaitingMessage = awaitingMessage.filter(r => r !== record);
         recordFailure(record, result);
         if (record.inputCoin && record.inputCoin.usd > 0) {
-            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background, model: state.model || record.info.model });
+            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background, via: initiatorName(record.info), model: state.model || record.info.model });
         }
         return;
     }
@@ -601,6 +614,7 @@ async function finishRecord(record, result) {
         usd: cost ? cost.usd : null,
         accuracy,
         aborted: Boolean(result.aborted),
+        via: initiatorName(record.info),
     };
     record.entry = entry;
 
@@ -649,8 +663,9 @@ function recordFailure(record, result) {
         accuracy: 'failed',
         failed: true,
         reason,
+        via: initiatorName(record.info),
     };
-    console.info(LOG, 'Request produced nothing and was not billed:', { model: entry.model, type: entry.type, status: result.status, reason });
+    console.info(LOG, 'Request produced nothing and was not billed:', { model: entry.model, type: entry.type, status: result.status, reason, via: entry.via });
     pushHistory(entry);
     save();
     ui.update();
@@ -678,7 +693,7 @@ function recordStats(record, entry) {
 }
 
 function launchResultCoins(record, entry, cost) {
-    const common = { model: entry.model, background: record.background };
+    const common = { model: entry.model, background: record.background, via: entry.via };
 
     if (!cost) {
         ui.launchCoin({ kind: 'input', usd: null, tokens: entry.tokIn, ...common });
