@@ -46,8 +46,8 @@ const glint = (id) => `
     </g>`;
 
 /** A gold coin with a rim */
-const coin = (id, cx, cy, r = 6) => `
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${id}-ball)" stroke="#6e4808" stroke-width="0.8"/>
+const coin = (id, cx, cy, r = 6, fill = 'ball', rim = '#6e4808') => `
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${id}-${fill})" stroke="${rim}" stroke-width="0.8"/>
     <circle cx="${cx}" cy="${cy}" r="${(r * 0.68).toFixed(2)}" fill="none" stroke="#fff3c4" stroke-opacity="0.65" stroke-width="0.6"/>`;
 
 /** Four-point sparkle */
@@ -66,7 +66,7 @@ const svg = (body) => `<svg class="tw-wallet-svg" viewBox="0 0 64 64" aria-hidde
  */
 function bifold(id, o) {
     const texture = o.texture ? `<rect x="6" y="19" width="52" height="36" rx="7" fill="url(#${id}-tex)"/>` : '';
-    const textureFlap = o.texture ? `<path d="M58 28 H41.5 a8.5 8.5 0 0 0 0 17 H58 Z" fill="url(#${id}-tex)"/>` : '';
+    const textureFlap = o.texture && o.flapTexture !== false ? `<path d="M58 28 H41.5 a8.5 8.5 0 0 0 0 17 H58 Z" fill="url(#${id}-tex)"/>` : '';
     return svg(`
     <defs>
         ${sharedDefs(id)}
@@ -130,6 +130,33 @@ const crocTexture = (dark, light) => (id) => {
     <pattern id="${id}-tex" width="12" height="9" patternUnits="userSpaceOnUse" patternTransform="translate(6 19)">
         ${tile(0.4, 0.4, 5.4, 3.7)}${tile(6.4, 0.4, 5.2, 3.7)}
         ${tile(-2.6, 4.9, 5.6, 3.7)}${tile(3.4, 4.9, 5.2, 3.7)}${tile(9.4, 4.9, 5.6, 3.7)}
+    </pattern>`;
+};
+
+/**
+ * Leopard rosettes: irregular broken dark rings around a warm centre, plus small spots.
+ * Each blob is [angle, length, thickness] relative to the rosette radius.
+ */
+const leopardTexture = (id) => {
+    const rosette = (cx, cy, r, rot, blobs) => {
+        let out = `<ellipse cx="${cx}" cy="${cy}" rx="${(r * 0.82).toFixed(2)}" ry="${(r * 0.62).toFixed(2)}" fill="#a3561a" fill-opacity="0.62" transform="rotate(${rot} ${cx} ${cy})"/>`;
+        for (const [a, len, thick] of blobs) {
+            const angle = ((a + rot) * Math.PI) / 180;
+            const x = (cx + Math.cos(angle) * r).toFixed(2);
+            const y = (cy + Math.sin(angle) * r * 0.82).toFixed(2);
+            out += `<ellipse cx="${x}" cy="${y}" rx="${(r * len).toFixed(2)}" ry="${(r * thick).toFixed(2)}" fill="#2a1406" transform="rotate(${(a + rot + 90).toFixed(1)} ${x} ${y})"/>`;
+        }
+        return out;
+    };
+    const spot = (cx, cy, rx, ry, rot) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#2a1406" transform="rotate(${rot} ${cx} ${cy})"/>`;
+    return `
+    <pattern id="${id}-tex" width="22" height="18" patternUnits="userSpaceOnUse" patternTransform="translate(6 19) rotate(-10)">
+        ${rosette(5.5, 5, 2.6, 10, [[0, 0.62, 0.34], [78, 0.48, 0.3], [160, 0.66, 0.36], [252, 0.5, 0.32]])}
+        ${rosette(15.6, 4.6, 2.2, 50, [[0, 0.72, 0.36], [118, 0.58, 0.32], [228, 0.64, 0.35]])}
+        ${rosette(10.4, 12.6, 2.8, 120, [[0, 0.56, 0.33], [88, 0.66, 0.36], [178, 0.46, 0.3], [262, 0.6, 0.34]])}
+        ${rosette(19, 13.6, 2, 200, [[0, 0.7, 0.36], [125, 0.6, 0.33], [240, 0.55, 0.32]])}
+        ${spot(1.5, 11.4, 0.7, 0.45, 30)}${spot(9.6, 1.4, 0.55, 0.38, -20)}${spot(20.3, 8.6, 0.6, 0.4, 60)}
+        ${spot(3.4, 16.4, 0.5, 0.35, 10)}${spot(14.6, 9.2, 0.42, 0.3, -40)}
     </pattern>`;
 };
 
@@ -266,6 +293,127 @@ function minaudiere(id, o) {
     ${glint(id)}`);
 }
 
+/* -------------------------------------------- white leather with pearls */
+
+const pearlDefs = (id) => `
+    <radialGradient id="${id}-pearl" cx="0.36" cy="0.3" r="0.78">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset="0.3" stop-color="#fbf6f2"/>
+        <stop offset="0.62" stop-color="#ecdcd8"/>
+        <stop offset="0.86" stop-color="#c8b8b4"/>
+        <stop offset="1" stop-color="#a39490"/>
+    </radialGradient>`;
+
+function pearlClutch(id) {
+    // Pearls along a cubic Bézier: the strand handle
+    const p0 = [12.5, 24.5];
+    const p1 = [14, 5];
+    const p2 = [50, 5];
+    const p3 = [51.5, 24.5];
+    const pearls = [];
+    for (let i = 0; i <= 14; i++) {
+        const t = i / 14;
+        const k = 1 - t;
+        const x = k ** 3 * p0[0] + 3 * k * k * t * p1[0] + 3 * k * t * t * p2[0] + t ** 3 * p3[0];
+        const y = k ** 3 * p0[1] + 3 * k * k * t * p1[1] + 3 * k * t * t * p2[1] + t ** 3 * p3[1];
+        pearls.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.65" fill="url(#${id}-pearl)" stroke="#9a8a86" stroke-opacity="0.45" stroke-width="0.25"/>`);
+    }
+    const flap = 'M7.6 30 V29.5 a6.4 6.4 0 0 1 6.4 -6.4 H50 a6.4 6.4 0 0 1 6.4 6.4 V30.5 L36.2 42.6 Q32 45 27.8 42.6 L7.6 30.5 Z';
+    const flapEdge = 'M7.6 30.5 L27.8 42.6 Q32 45 36.2 42.6 L56.4 30.5';
+    return svg(`
+    <defs>
+        ${sharedDefs(id)}
+        ${pearlDefs(id)}
+        <linearGradient id="${id}-body" x1="0" y1="0" x2="0.3" y2="1">
+            <stop offset="0" stop-color="#fffefb"/>
+            <stop offset="0.55" stop-color="#f0e9de"/>
+            <stop offset="1" stop-color="#cfc3b0"/>
+        </linearGradient>
+        <linearGradient id="${id}-flap" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#ece4d7"/>
+        </linearGradient>
+        <clipPath id="${id}-clip"><rect x="7" y="23" width="50" height="32" rx="7"/></clipPath>
+    </defs>
+    <g class="tw-peek">${coin(id, 24, 21.8, 5.4)}</g>
+    <path d="M12.5 24.5 C 14 5, 50 5, 51.5 24.5" fill="none" stroke="#b9a99f" stroke-opacity="0.5" stroke-width="0.4"/>
+    ${pearls.join('')}
+    <rect x="7" y="23" width="50" height="32" rx="7" fill="url(#${id}-body)"/>
+    <rect x="7" y="23" width="50" height="32" rx="7" fill="url(#${id}-sheen)"/>
+    <rect x="7.5" y="23.5" width="49" height="31" rx="6.5" fill="none" stroke="url(#${id}-gold)" stroke-width="0.9"/>
+    <rect x="10" y="26" width="44" height="26" rx="4.5" fill="none" stroke="#c9b48a" stroke-opacity="0.7" stroke-width="0.55" stroke-dasharray="1.6 1.3"/>
+    <path d="${flapEdge}" fill="none" stroke="#5a4a36" stroke-opacity="0.22" stroke-width="2" transform="translate(0 1)"/>
+    <path d="${flap}" fill="url(#${id}-flap)"/>
+    <path d="${flapEdge}" fill="none" stroke="url(#${id}-goldh)" stroke-width="0.8"/>
+    <path d="M10.5 30.8 L28.6 41.3 Q32 43.2 35.4 41.3 L53.5 30.8" fill="none" stroke="#c9b48a" stroke-opacity="0.75" stroke-width="0.5" stroke-dasharray="1.4 1.2"/>
+    <circle cx="12.5" cy="25.3" r="1.7" fill="none" stroke="url(#${id}-gold)" stroke-width="1.1"/>
+    <circle cx="51.5" cy="25.3" r="1.7" fill="none" stroke="url(#${id}-gold)" stroke-width="1.1"/>
+    <circle cx="32" cy="43.2" r="3.5" fill="url(#${id}-ball)" stroke="#5e3c06" stroke-width="0.4"/>
+    <circle cx="32" cy="43.2" r="2.7" fill="url(#${id}-pearl)"/>
+    <circle cx="31" cy="42.2" r="0.7" fill="#fff" opacity="0.9"/>
+    ${glint(id)}`);
+}
+
+/* ------------------------------------------------------ rose gold clutch */
+
+function roseGold(id) {
+    const rose = `
+        <stop offset="0" stop-color="#7d3f30"/>
+        <stop offset="0.22" stop-color="#f8cdb8"/>
+        <stop offset="0.42" stop-color="#c4806a"/>
+        <stop offset="0.6" stop-color="#ffe6da"/>
+        <stop offset="0.8" stop-color="#a35f4c"/>
+        <stop offset="1" stop-color="#e9ad95"/>`;
+    const diamonds = [];
+    for (let x = 10.6; x <= 53.5; x += 3.08) {
+        diamonds.push(`<circle cx="${x.toFixed(2)}" cy="23.5" r="1.08" fill="url(#${id}-diamond)" stroke="#7d3f30" stroke-opacity="0.5" stroke-width="0.25"/>`);
+    }
+    const heart = 'M32 45.2 C 25.2 40.4, 25.9 34.3, 29.3 34.3 C 30.8 34.3, 31.6 35.2, 32 36.1 C 32.4 35.2, 33.2 34.3, 34.7 34.3 C 38.1 34.3, 38.8 40.4, 32 45.2 Z';
+    return svg(`
+    <defs>
+        ${sharedDefs(id)}
+        <linearGradient id="${id}-rose" x1="0" y1="0" x2="0.9" y2="1">${rose}</linearGradient>
+        <linearGradient id="${id}-roseh" x1="0" y1="0" x2="1" y2="0">${rose}</linearGradient>
+        <radialGradient id="${id}-rball" cx="0.35" cy="0.3" r="0.8">
+            <stop offset="0" stop-color="#fff4ee"/>
+            <stop offset="0.32" stop-color="#f3b9a2"/>
+            <stop offset="0.74" stop-color="#a65a46"/>
+            <stop offset="1" stop-color="#5e2a1d"/>
+        </radialGradient>
+        <radialGradient id="${id}-diamond" cx="0.35" cy="0.3" r="0.8">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="0.5" stop-color="#e6eef7"/>
+            <stop offset="1" stop-color="#8d9bb0"/>
+        </radialGradient>
+        <linearGradient id="${id}-morganite" x1="0.2" y1="0" x2="0.8" y2="1">
+            <stop offset="0" stop-color="#ffe0ea"/>
+            <stop offset="0.5" stop-color="#f27aa3"/>
+            <stop offset="1" stop-color="#9c1f4f"/>
+        </linearGradient>
+        <pattern id="${id}-guilloche" width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45 32 38)">
+            <path d="M0 0 H3.4 M0 0 V3.4" stroke="#6b3022" stroke-opacity="0.32" stroke-width="0.45"/>
+            <path d="M0 0.55 H3.4 M0.55 0 V3.4" stroke="#fff" stroke-opacity="0.3" stroke-width="0.3"/>
+        </pattern>
+        <clipPath id="${id}-clip"><rect x="7.5" y="20.5" width="49" height="34" rx="7.5"/></clipPath>
+    </defs>
+    <g class="tw-peek">${coin(id, 44, 17.5, 5.6, 'rball', '#6b3022')}</g>
+    <rect x="7.5" y="22" width="49" height="32.5" rx="7.5" fill="url(#${id}-rose)"/>
+    <rect x="7.5" y="22" width="49" height="32.5" rx="7.5" fill="url(#${id}-guilloche)"/>
+    <rect x="7.5" y="22" width="49" height="32.5" rx="7.5" fill="url(#${id}-sheen)"/>
+    <rect x="8.1" y="22.6" width="47.8" height="31.3" rx="6.9" fill="none" stroke="#fff1ea" stroke-opacity="0.6" stroke-width="0.7"/>
+    <rect x="7.5" y="22" width="49" height="32.5" rx="7.5" fill="none" stroke="#6b3022" stroke-opacity="0.75" stroke-width="0.6"/>
+    <rect x="6" y="20.3" width="52" height="6.4" rx="3.2" fill="url(#${id}-roseh)" stroke="#6b3022" stroke-opacity="0.8" stroke-width="0.5"/>
+    <path d="M8.6 21.1 H55.4" stroke="#fff4ee" stroke-opacity="0.7" stroke-width="0.5" stroke-linecap="round"/>
+    ${diamonds.join('')}
+    <path d="${heart}" fill="url(#${id}-morganite)" stroke="url(#${id}-roseh)" stroke-width="1.3" stroke-linejoin="round"/>
+    <path d="M32 36.6 L32 44 M28 37.6 L32 40.6 L36 37.6" fill="none" stroke="#fff" stroke-opacity="0.28" stroke-width="0.35"/>
+    <path d="M28.4 36.6 Q 29.4 35.4 30.8 35.8" fill="none" stroke="#fff" stroke-opacity="0.85" stroke-width="0.7" stroke-linecap="round"/>
+    ${sparkle(13.5, 31, 0.5, 0.4)}
+    ${sparkle(50.5, 47.5, 0.45, 1.6)}
+    ${sparkle(46, 23.4, 0.38, 2.2)}
+    ${glint(id)}`);
+}
+
 /* ----------------------------------------------------- classic (simple) */
 
 function classic(id) {
@@ -364,6 +512,21 @@ export const WALLETS = [
         }),
     },
     {
+        id: 'leopard',
+        name: { ru: 'Леопард', en: 'Leopard' },
+        hint: { ru: 'леопардовый принт, чёрный клапан, золото', en: 'leopard print, black flap, gold' },
+        glow: 'rgba(255, 190, 100, 0.55)',
+        render: id => bifold(id, {
+            body: ['#f3c983', '#d39a4c', '#8f5622'],
+            flap: ['#36363c', '#0a0a0b'],
+            stitch: 'rgba(60, 30, 8, 0.55)',
+            texture: true,
+            flapTexture: false,
+            textureDefs: leopardTexture,
+            emblem: roundClasp,
+        }),
+    },
+    {
         id: 'quilted-noir',
         name: { ru: 'Стёганый клатч', en: 'Quilted clutch' },
         hint: { ru: 'чёрная стёжка, золотая цепочка', en: 'black quilting, gold chain' },
@@ -376,6 +539,13 @@ export const WALLETS = [
         hint: { ru: 'пудровая стёжка, золотая цепочка', en: 'blush quilting, gold chain' },
         glow: 'rgba(255, 170, 190, 0.6)',
         render: id => quilted(id, { body: ['#f6d3d6', '#c88b95'], seam: '#9b5764', seamLight: 0.45 }),
+    },
+    {
+        id: 'pearl',
+        name: { ru: 'Белый жемчуг', en: 'White pearl' },
+        hint: { ru: 'белая кожа, нитка жемчуга', en: 'white leather, pearl strand' },
+        glow: 'rgba(255, 238, 215, 0.65)',
+        render: id => pearlClutch(id),
     },
     {
         id: 'velvet-bordeaux',
@@ -404,6 +574,13 @@ export const WALLETS = [
         hint: { ru: 'золото, рубин', en: 'gold, ruby' },
         glow: 'rgba(255, 190, 110, 0.65)',
         render: id => minaudiere(id, { gem: ['#ffc2d0', '#d0103f', '#52031a'] }),
+    },
+    {
+        id: 'rose-gold',
+        name: { ru: 'Розовое золото', en: 'Rose gold' },
+        hint: { ru: 'розовое золото, бриллианты, сердце-морганит', en: 'rose gold, diamonds, morganite heart' },
+        glow: 'rgba(255, 170, 160, 0.6)',
+        render: id => roseGold(id),
     },
     {
         id: 'classic',
