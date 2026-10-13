@@ -1,0 +1,9 @@
+{
+    "name": "st-token-wallet",
+    "private": true,
+    "type": "module",
+    "description": "SillyTavern extension: shows the cost of every generation as coins flying out of a wallet",
+    "scripts": {
+        "test": "node --test tests/*.test.mjs"
+    }
+}
