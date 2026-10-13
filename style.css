@@ -5,43 +5,7 @@
 .tw-wallet,
 .tw-panel {
     --tw-gold: #d4a52f;
-    --tw-body-1: #34b386;
-    --tw-body-2: #0d523d;
-    --tw-flap-1: #23946b;
-    --tw-flap-2: #0a4434;
-    --tw-glow: rgba(70, 220, 165, 0.55);
-}
-
-[data-skin="burgundy"] {
-    --tw-body-1: #c4486a;
-    --tw-body-2: #5a1023;
-    --tw-flap-1: #a8304f;
-    --tw-flap-2: #4a0c1b;
-    --tw-glow: rgba(245, 95, 135, 0.5);
-}
-
-[data-skin="graphite"] {
-    --tw-body-1: #646c78;
-    --tw-body-2: #1f2329;
-    --tw-flap-1: #4b525d;
-    --tw-flap-2: #17191d;
-    --tw-glow: rgba(190, 200, 220, 0.45);
-}
-
-[data-skin="caramel"] {
-    --tw-body-1: #dfa365;
-    --tw-body-2: #7d441a;
-    --tw-flap-1: #c9854a;
-    --tw-flap-2: #653513;
-    --tw-glow: rgba(255, 190, 110, 0.5);
-}
-
-[data-skin="sapphire"] {
-    --tw-body-1: #4a7ce6;
-    --tw-body-2: #142a6e;
-    --tw-flap-1: #3461c8;
-    --tw-flap-2: #0e2056;
-    --tw-glow: rgba(110, 160, 255, 0.55);
+    --tw-glow: rgba(255, 205, 100, 0.55);
 }
 
 .tw-hidden {
@@ -109,23 +73,40 @@
     overflow: visible;
 }
 
-.tw-wallet .tw-note,
-.tw-wallet .tw-peek-coin {
+.tw-wallet .tw-peek,
+.tw-wallet .tw-lid-l,
+.tw-wallet .tw-lid-r {
     transform-box: fill-box;
-    transform-origin: center;
     transition: transform 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.tw-wallet .tw-peek {
+    transform-origin: center;
+}
+
+.tw-wallet .tw-lid-l {
+    transform-origin: right bottom;
+}
+
+.tw-wallet .tw-lid-r {
+    transform-origin: left bottom;
 }
 
 .tw-wallet.tw-pop .tw-wallet-button {
     animation: tw-pop 0.6s cubic-bezier(0.3, 1.5, 0.5, 1);
 }
 
-.tw-wallet.tw-pop .tw-note {
-    transform: translateY(-4px) rotate(-4deg);
+.tw-wallet.tw-pop .tw-peek {
+    transform: translateY(-5px) rotate(-3deg);
 }
 
-.tw-wallet.tw-pop .tw-peek-coin {
-    transform: translateY(-6px);
+/* Kiss-lock purse opens when a coin flies out */
+.tw-wallet.tw-pop .tw-lid-l {
+    transform: rotate(-28deg);
+}
+
+.tw-wallet.tw-pop .tw-lid-r {
+    transform: rotate(28deg);
 }
 
 @keyframes tw-pop {
@@ -133,6 +114,34 @@
     30% { transform: translateY(2px) scale(1.12, 0.9); }
     60% { transform: translateY(-3px) scale(0.96, 1.06); }
     100% { transform: scale(1); }
+}
+
+/* Light sweeping across the wallet every few seconds */
+.tw-wallet-svg .tw-glint {
+    opacity: 0;
+}
+
+.tw-wallet.tw-shine .tw-glint {
+    animation: tw-glint 7s ease-in-out 1.5s infinite;
+}
+
+@keyframes tw-glint {
+    0%, 78% { transform: translateX(0); opacity: 0; }
+    80% { opacity: 1; }
+    94% { transform: translateX(96px); opacity: 1; }
+    95%, 100% { transform: translateX(96px); opacity: 0; }
+}
+
+/* Sparkles on the gold clutches */
+.tw-wallet.tw-shine .tw-twinkle {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: tw-twinkle 2.6s ease-in-out infinite;
+}
+
+@keyframes tw-twinkle {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 1; }
 }
 
 /* Soft glow while a request is in progress */
@@ -336,7 +345,9 @@
 @media (prefers-reduced-motion: reduce) {
     .tw-coin,
     .tw-wallet.tw-pop .tw-wallet-button,
-    .tw-wallet.tw-busy .tw-wallet-button::before {
+    .tw-wallet.tw-busy .tw-wallet-button::before,
+    .tw-wallet.tw-shine .tw-glint,
+    .tw-wallet.tw-shine .tw-twinkle {
         animation: none;
     }
 }
@@ -610,6 +621,48 @@
 
 .tw-check {
     margin: 3px 0;
+}
+
+.tw-wallet-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    gap: 6px;
+    margin: 6px 0 8px;
+}
+
+.tw-wallet-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 4px 5px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.12);
+    color: inherit;
+    font: inherit;
+    font-size: 0.78em;
+    line-height: 1.15;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.tw-wallet-option:hover {
+    transform: translateY(-1px);
+    border-color: rgba(212, 165, 47, 0.6);
+}
+
+.tw-wallet-option.tw-active {
+    border-color: var(--tw-gold, #d4a52f);
+    background: rgba(212, 165, 47, 0.16);
+    box-shadow: 0 0 0 1px var(--tw-gold, #d4a52f) inset;
+}
+
+.tw-wallet-option .tw-wallet-svg {
+    width: 44px;
+    height: 44px;
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
 }
 
 @media (max-width: 1000px) {

@@ -2,9 +2,9 @@
  * Settings drawer in the SillyTavern "Extensions" panel.
  */
 
-import { t, LANGUAGES, getLocale } from './i18n.js';
+import { t, LANGUAGES, getLocale, getLang } from './i18n.js';
+import { WALLETS } from './wallets.js';
 
-const SKINS = ['emerald', 'burgundy', 'graphite', 'caramel', 'sapphire'];
 const SIZES = ['s', 'm', 'l'];
 
 function escapeHtml(value) {
@@ -121,16 +121,22 @@ export class SettingsPanel {
 
                 <hr class="sysHR" />
                 <b>${escapeHtml(t('appearance'))}</b>
+                <div class="tw-block-label">${escapeHtml(t('wallet_style'))}</div>
+                <div class="tw-wallet-picker" role="radiogroup">
+                    ${WALLETS.map((wallet, index) => `
+                    <button type="button" class="tw-wallet-option${s.wallet === wallet.id ? ' tw-active' : ''}" data-wallet="${escapeHtml(wallet.id)}"
+                        role="radio" aria-checked="${s.wallet === wallet.id}" title="${escapeHtml(wallet.hint[getLang()] || wallet.hint.en)}">
+                        ${wallet.render(`tw-pick-${index}`)}
+                        <span>${escapeHtml(wallet.name[getLang()] || wallet.name.en)}</span>
+                    </button>`).join('')}
+                </div>
                 <div class="tw-settings-grid">
-                    <label for="tw_skin">${escapeHtml(t('skin'))}</label>
-                    <select id="tw_skin" class="text_pole">
-                        ${SKINS.map(skin => option(skin, t(`skin_${skin}`), s.skin === skin)).join('')}
-                    </select>
                     <label for="tw_size">${escapeHtml(t('size'))}</label>
                     <select id="tw_size" class="text_pole">
                         ${SIZES.map(size => option(size, t(`size_${size}`), s.size === size)).join('')}
                     </select>
                 </div>
+                ${checkbox('tw_shine', t('shine'), s.shine)}
                 ${checkbox('tw_show_wallet', t('show_wallet'), s.showWallet)}
                 ${checkbox('tw_show_chat_total', t('show_chat_total'), s.showChatTotal)}
                 ${checkbox('tw_show_message_cost', t('show_message_cost'), s.showMessageCost)}
@@ -200,7 +206,20 @@ export class SettingsPanel {
             }
         });
         onChange('tw_timing', el => { s().inputTiming = el.value; });
-        onChange('tw_skin', el => { s().skin = el.value; });
+        this.container.querySelectorAll('.tw-wallet-option').forEach((button) => {
+            button.addEventListener('click', () => {
+                s().wallet = button.getAttribute('data-wallet');
+                this.host.save();
+                this.host.refreshAll({ keepSettings: true });
+                this.container.querySelectorAll('.tw-wallet-option').forEach((other) => {
+                    const active = other === button;
+                    other.classList.toggle('tw-active', active);
+                    other.setAttribute('aria-checked', String(active));
+                });
+                this.host.testAnimation();
+            });
+        });
+        onChange('tw_shine', el => { s().shine = el.checked; });
         onChange('tw_size', el => { s().size = el.value; });
         onChange('tw_show_wallet', el => { s().showWallet = el.checked; });
         onChange('tw_show_chat_total', el => { s().showChatTotal = el.checked; });
