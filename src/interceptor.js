@@ -11,6 +11,9 @@
 
 import { consumeChunk, createSSEParser, createStreamState } from './usage.js';
 import { parseEmbeddingRequest } from './embeddings.js';
+import { captureStack, extensionsFromStack, ownExtensionFolder } from './initiator.js';
+
+const OWN_FOLDER = ownExtensionFolder(import.meta.url);
 
 const CHAT_PATH = '/api/backends/chat-completions/generate';
 const TEXT_PATH = '/api/backends/text-completions/generate';
@@ -25,6 +28,7 @@ const HOOK_FLAG = '__tokenWalletFetchHook';
  * @property {boolean} stream
  * @property {any} body Parsed request body
  * @property {import('./embeddings.js').EmbeddingRequest} [embedding] Vector Storage request details
+ * @property {string[]} [initiators] Extensions on the call stack, the originator first
  */
 
 /**
@@ -187,7 +191,10 @@ export function installFetchInterceptor({ isEnabled, onStart, onFinish }) {
         try {
             if (hook.handlers.isEnabled()) {
                 info = inspectRequest(input, init);
-                if (info) record = hook.handlers.onStart(info);
+                if (info) {
+                    info.initiators = extensionsFromStack(captureStack(), OWN_FOLDER);
+                    record = hook.handlers.onStart(info);
+                }
             }
         } catch (error) {
             console.warn('[Token Wallet] request inspection failed', error);
