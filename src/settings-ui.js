@@ -142,6 +142,7 @@ export class SettingsPanel {
                 ${checkbox('tw_show_message_cost', t('show_message_cost'), s.showMessageCost)}
                 ${checkbox('tw_show_model', t('show_model'), s.showModelOnCoin)}
                 ${checkbox('tw_track_background', t('track_background'), s.trackBackground)}
+                ${checkbox('tw_track_embeddings', t('track_embeddings'), s.trackEmbeddings)}
                 <div class="tw-buttons">
                     <div id="tw_test" class="menu_button menu_button_icon"><i class="fa-solid fa-coins"></i><span>${escapeHtml(t('test_coin'))}</span></div>
                     <div id="tw_reset_position" class="menu_button menu_button_icon"><i class="fa-solid fa-arrows-to-dot"></i><span>${escapeHtml(t('reset_position'))}</span></div>
@@ -226,6 +227,7 @@ export class SettingsPanel {
         onChange('tw_show_message_cost', el => { s().showMessageCost = el.checked; });
         onChange('tw_show_model', el => { s().showModelOnCoin = el.checked; });
         onChange('tw_track_background', el => { s().trackBackground = el.checked; });
+        onChange('tw_track_embeddings', el => { s().trackEmbeddings = el.checked; });
 
         $('tw_custom_prices')?.addEventListener('input', (event) => {
             s().customPrices = event.target.value;
