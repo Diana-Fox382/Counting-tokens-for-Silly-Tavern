@@ -35,7 +35,7 @@ const EXTRA_KEY = 'token_wallet';
 const CATALOG_STORAGE_KEY = 'token_wallet_catalog_v2';
 const CATALOG_MAX_AGE = 12 * 60 * 60 * 1000;
 const RATE_MAX_AGE = 6 * 60 * 60 * 1000;
-const HISTORY_LIMIT = 40;
+const HISTORY_LIMIT = 80;
 const DAYS_LIMIT = 62;
 const LOG = '[Token Wallet]';
 
@@ -555,10 +555,11 @@ async function finishRecord(record, result) {
     const hasOutput = Boolean(state.text || state.reasoning);
 
     if (!result.ok || (!hasUsage && !hasOutput)) {
-        // Nothing was generated (error, rejected request, stop before the first token)
+        // Nothing was generated (error, rejected request, stop before the first token): nothing is billed
         awaitingMessage = awaitingMessage.filter(r => r !== record);
+        recordFailure(record, result);
         if (record.inputCoin && record.inputCoin.usd > 0) {
-            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background });
+            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background, model: state.model || record.info.model });
         }
         return;
     }
@@ -618,6 +619,43 @@ async function finishRecord(record, result) {
     ui.update();
 }
 
+function pushHistory(entry) {
+    const history = settings().stats.history;
+    history.push(entry);
+    if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT);
+}
+
+/**
+ * A request that produced nothing is not billed: it goes to the history only (not to the totals),
+ * so every coin that flew out can be traced back to a request.
+ */
+function recordFailure(record, result) {
+    const state = result.state;
+    const reason = String(result.httpError || state.error || (result.aborted ? t('aborted') : t('empty_reply')))
+        .replace(/\s+/g, ' ')
+        .slice(0, 160);
+    const entry = {
+        t: Date.now(),
+        model: state.model || record.info.model || '?',
+        source: record.info.source,
+        provider: state.provider || null,
+        type: record.type,
+        bg: record.background,
+        tokIn: 0,
+        tokOut: 0,
+        inUsd: 0,
+        outUsd: 0,
+        usd: 0,
+        accuracy: 'failed',
+        failed: true,
+        reason,
+    };
+    console.info(LOG, 'Request produced nothing and was not billed:', { model: entry.model, type: entry.type, status: result.status, reason });
+    pushHistory(entry);
+    save();
+    ui.update();
+}
+
 function recordStats(record, entry) {
     const s = settings();
     const stats = s.stats;
@@ -626,8 +664,7 @@ function recordStats(record, entry) {
     stats.days[key] = addToTotals(stats.days[key], entry);
     const days = Object.keys(stats.days).sort();
     while (days.length > DAYS_LIMIT) delete stats.days[days.shift()];
-    stats.history.push(entry);
-    if (stats.history.length > HISTORY_LIMIT) stats.history.splice(0, stats.history.length - HISTORY_LIMIT);
+    pushHistory(entry);
     save();
 
     // Per-chat totals live in the chat file itself
@@ -873,11 +910,12 @@ async function resetAllStats() {
 }
 
 function testAnimation() {
-    const model = t('test_model');
+    // Clearly marked, so test coins are never mistaken for real spending
+    const label = t('coin_test');
     const inUsd = 0.0042 + Math.random() * 0.002;
     const outUsd = 0.011 + Math.random() * 0.004;
-    ui.launchCoin({ kind: 'input', usd: inUsd, tokens: 12840, model });
-    ui.launchCoin({ kind: 'output', usd: outUsd, tokens: 734, model });
+    ui.launchCoin({ kind: 'input', label, usd: inUsd, tokens: 12840 });
+    ui.launchCoin({ kind: 'output', label, usd: outUsd, tokens: 734 });
 }
 
 /* ------------------------------------------------------------------- init */

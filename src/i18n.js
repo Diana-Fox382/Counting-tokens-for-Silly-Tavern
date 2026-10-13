@@ -42,6 +42,10 @@ const DICT = {
         coin_embedding: 'эмбеддинги',
         type_embedding: 'эмбеддинги',
         tag_embedding: 'эмб.',
+        tag_failed: 'не списано',
+        failed_hint: 'Запрос не прошёл (ошибка или отмена), деньги не списаны.',
+        empty_reply: 'пустой ответ',
+        coin_test: 'проверка анимации',
         reset_position: 'Вернуть кошелёк на место',
         test_coin: 'Проверить анимацию',
         prices: 'Цены моделей',
@@ -103,7 +107,6 @@ const DICT = {
         type_background: 'фоновый',
         message_cost: 'Стоимость ответа',
         message_requests: 'запросов: {n}',
-        test_model: 'тестовая-модель',
     },
     en: {
         title: 'Token Wallet',
@@ -143,6 +146,10 @@ const DICT = {
         coin_embedding: 'embeddings',
         type_embedding: 'embeddings',
         tag_embedding: 'emb.',
+        tag_failed: 'not billed',
+        failed_hint: 'The request failed (error or cancel), nothing was billed.',
+        empty_reply: 'empty reply',
+        coin_test: 'animation test',
         reset_position: 'Reset wallet position',
         test_coin: 'Test animation',
         prices: 'Model prices',
@@ -204,7 +211,6 @@ const DICT = {
         type_background: 'background',
         message_cost: 'Reply cost',
         message_requests: 'requests: {n}',
-        test_model: 'test-model',
     },
 };
 
