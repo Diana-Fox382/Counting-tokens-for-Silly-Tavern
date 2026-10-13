@@ -280,7 +280,7 @@ export class WalletUI {
         }
         if (coin.usd === null || coin.usd === undefined) caption.push(t('no_price'));
         if (coin.background && !coin.label) caption.push(t('bg'));
-        if (s.showModelOnCoin && coin.model && coin.kind !== 'refund') caption.push(shortModel(coin.model));
+        if (s.showModelOnCoin && coin.model) caption.push(shortModel(coin.model));
         label.appendChild(el('div', 'tw-coin-caption', caption.join(' · ')));
         if (coin.note) label.appendChild(el('div', 'tw-coin-note', coin.note));
         if (coin.usd === null || coin.usd === undefined) label.title = t('no_price_hint');
@@ -418,8 +418,9 @@ export class WalletUI {
         if (!this.panel) return;
         const s = this.host.settings();
         const history = this.host.history();
-        // Embeddings follow every reply: the "last request" block shows the reply itself
-        const last = [...history].reverse().find(item => item.type !== 'embedding') || history[history.length - 1];
+        // Embeddings follow every reply and failed requests cost nothing: the block shows the last billed reply
+        const last = [...history].reverse().find(item => item.type !== 'embedding' && !item.failed)
+            || [...history].reverse().find(item => !item.failed);
         const money = (usd) => (usd === null || usd === undefined ? '—' : this.host.money(usd));
 
         let lastHtml = `<div class="tw-empty">${escapeHtml(t('no_requests'))}</div>`;
@@ -446,12 +447,36 @@ export class WalletUI {
                 <div class="tw-accuracy tw-accuracy--${escapeHtml(last.accuracy)}">${last.accuracy === 'exact' ? '✓' : last.accuracy === 'unknown' ? '?' : '≈'} ${escapeHtml(accuracy)}</div>`;
         }
 
-        const historyHtml = history.slice(-12).reverse().map(item => `
-            <div class="tw-hist" title="${escapeHtml(`${item.model}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`)}">
+        // Embeddings come in series (every edit/swipe re-syncs Vector Storage): consecutive ones share a row
+        const rows = [];
+        for (const item of [...history].reverse()) {
+            const previous = rows[rows.length - 1];
+            if (previous && item.type === 'embedding' && previous.type === 'embedding' && previous.model === item.model) {
+                previous.count += 1;
+                previous.tokIn += item.tokIn || 0;
+                previous.usd = previous.usd === null || item.usd === null ? null : previous.usd + item.usd;
+                previous.inUsd = previous.usd;
+                continue;
+            }
+            if (rows.length >= 12) break;
+            rows.push({ ...item, count: 1 });
+        }
+
+        const historyHtml = rows.map((item) => {
+            const tags = [];
+            if (item.type === 'embedding') tags.push(item.count > 1 ? `${t('tag_embedding')} ×${item.count}` : t('tag_embedding'));
+            else if (item.bg) tags.push(t('bg'));
+            if (item.failed) tags.push(t('tag_failed'));
+            const tooltip = item.failed
+                ? `${item.model}\n${typeLabel(item)}\n${t('failed_hint')}\n${item.reason || ''}`
+                : `${item.model}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`;
+            return `
+            <div class="tw-hist${item.failed ? ' tw-hist--failed' : ''}" title="${escapeHtml(tooltip)}">
                 <span class="tw-dim">${escapeHtml(formatTime(item.t))}</span>
-                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${item.bg ? ` <span class="tw-tag">${escapeHtml(item.type === 'embedding' ? t('tag_embedding') : t('bg'))}</span>` : ''}</span>
+                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${tags.map(tag => ` <span class="tw-tag">${escapeHtml(tag)}</span>`).join('')}</span>
                 <span class="tw-num">${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}</span>
-            </div>`).join('');
+            </div>`;
+        }).join('');
 
         const rateText = t('rate_line', { rate: this.host.rate().toLocaleString(getLocale(), { maximumFractionDigits: 2 }) });
         const rateLine = s.currency === 'RUB'
