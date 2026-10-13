@@ -10,6 +10,7 @@
  */
 
 import { consumeChunk, createSSEParser, createStreamState } from './usage.js';
+import { parseEmbeddingRequest } from './embeddings.js';
 
 const CHAT_PATH = '/api/backends/chat-completions/generate';
 const TEXT_PATH = '/api/backends/text-completions/generate';
@@ -17,12 +18,13 @@ const HOOK_FLAG = '__tokenWalletFetchHook';
 
 /**
  * @typedef {object} RequestInfo
- * @property {'chat'|'text'} kind
- * @property {string} source Chat completion source or `tc:<api_type>`
+ * @property {'chat'|'text'|'embedding'} kind
+ * @property {string} source Chat completion source, `tc:<api_type>` or `emb:<vector source>`
  * @property {string|null} model Requested model
  * @property {string|undefined} type Generation type sent by SillyTavern (normal, swipe, quiet...)
  * @property {boolean} stream
  * @property {any} body Parsed request body
+ * @property {import('./embeddings.js').EmbeddingRequest} [embedding] Vector Storage request details
  */
 
 /**
@@ -52,7 +54,8 @@ function inspectRequest(input, init) {
 
     const isChat = path.endsWith(CHAT_PATH);
     const isText = path.endsWith(TEXT_PATH);
-    if (!isChat && !isText) return null;
+    const isVector = path.includes('/api/vector/');
+    if (!isChat && !isText && !isVector) return null;
     if (typeof init?.body !== 'string') return null;
 
     let body;
@@ -62,6 +65,20 @@ function inspectRequest(input, init) {
         return null;
     }
     if (!body || typeof body !== 'object') return null;
+
+    if (isVector) {
+        const embedding = parseEmbeddingRequest(path, body);
+        if (!embedding) return null;
+        return {
+            kind: 'embedding',
+            source: `emb:${embedding.source}`,
+            model: embedding.model,
+            type: 'embedding',
+            stream: false,
+            body,
+            embedding,
+        };
+    }
 
     return {
         kind: isChat ? 'chat' : 'text',
@@ -182,6 +199,11 @@ export function installFetchInterceptor({ isEnabled, onStart, onFinish }) {
 
         return promise.then(
             (response) => {
+                if (info.kind === 'embedding') {
+                    // The server answers with hashes only: the status is all that matters
+                    safeFinish(record, { ok: response.ok, status: response.status, aborted: false, httpError: null, state: createStreamState() });
+                    return response;
+                }
                 try {
                     const copy = response.clone();
                     readResponse(copy, info)

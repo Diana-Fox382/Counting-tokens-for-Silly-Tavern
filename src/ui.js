@@ -238,6 +238,7 @@ export class WalletUI {
      * @param {boolean} [coin.estimated]
      * @param {boolean} [coin.background]
      * @param {string} [coin.note] Second caption line
+     * @param {string} [coin.label] Caption instead of "input"/"output" (e.g. "embeddings")
      */
     launchCoin(coin) {
         const now = performance.now();
@@ -272,12 +273,12 @@ export class WalletUI {
         label.appendChild(amount);
 
         const caption = [];
-        caption.push(coin.kind === 'input' ? t('coin_input') : coin.kind === 'output' ? t('coin_output') : t('refund'));
+        caption.push(coin.label || (coin.kind === 'input' ? t('coin_input') : coin.kind === 'output' ? t('coin_output') : t('refund')));
         if (coin.kind !== 'refund' && coin.tokens !== undefined && coin.usd !== null && coin.usd !== undefined) {
             caption.push(`${formatTokens(coin.tokens)} ${t('tok')}`);
         }
         if (coin.usd === null || coin.usd === undefined) caption.push(t('no_price'));
-        if (coin.background) caption.push(t('bg'));
+        if (coin.background && !coin.label) caption.push(t('bg'));
         if (s.showModelOnCoin && coin.model && coin.kind !== 'refund') caption.push(shortModel(coin.model));
         label.appendChild(el('div', 'tw-coin-caption', caption.join(' · ')));
         if (coin.note) label.appendChild(el('div', 'tw-coin-note', coin.note));
@@ -415,7 +416,8 @@ export class WalletUI {
         if (!this.panel) return;
         const s = this.host.settings();
         const history = this.host.history();
-        const last = history[history.length - 1];
+        // Embeddings follow every reply: the "last request" block shows the reply itself
+        const last = [...history].reverse().find(item => item.type !== 'embedding') || history[history.length - 1];
         const money = (usd) => (usd === null || usd === undefined ? '—' : this.host.money(usd));
 
         let lastHtml = `<div class="tw-empty">${escapeHtml(t('no_requests'))}</div>`;
@@ -445,7 +447,7 @@ export class WalletUI {
         const historyHtml = history.slice(-12).reverse().map(item => `
             <div class="tw-hist" title="${escapeHtml(`${item.model}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`)}">
                 <span class="tw-dim">${escapeHtml(formatTime(item.t))}</span>
-                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${item.bg ? ` <span class="tw-tag">${escapeHtml(t('bg'))}</span>` : ''}</span>
+                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${item.bg ? ` <span class="tw-tag">${escapeHtml(item.type === 'embedding' ? t('tag_embedding') : t('bg'))}</span>` : ''}</span>
                 <span class="tw-num">${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}</span>
             </div>`).join('');
 
@@ -550,6 +552,7 @@ function accuracyText(entry) {
 }
 
 function typeLabel(entry) {
+    if (entry.type === 'embedding') return t('type_embedding');
     if (entry.bg) return t('type_background');
     const key = `type_${entry.type}`;
     const label = t(key);
