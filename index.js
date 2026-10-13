@@ -19,6 +19,7 @@ import {
 import { FALLBACK_USD_RUB, fetchUsdRubRate, formatMoney } from './src/currency.js';
 import { setLang, t, getLocale } from './src/i18n.js';
 import { WalletUI } from './src/ui.js';
+import { DEFAULT_WALLET, WALLETS } from './src/wallets.js';
 import { SettingsPanel, formatDate } from './src/settings-ui.js';
 
 const MODULE = 'token_wallet';
@@ -42,7 +43,8 @@ const DEFAULTS = Object.freeze({
     manualRate: FALLBACK_USD_RUB,
     rate: null,
     inputTiming: 'send',
-    skin: 'emerald',
+    wallet: DEFAULT_WALLET,
+    shine: true,
     size: 'm',
     showWallet: true,
     showChatTotal: true,
@@ -137,6 +139,7 @@ function settings() {
     if (!s.stats.allTime) s.stats.allTime = emptyTotals();
     if (!s.stats.days || typeof s.stats.days !== 'object') s.stats.days = {};
     if (!Array.isArray(s.stats.history)) s.stats.history = [];
+    if (!WALLETS.some(w => w.id === s.wallet)) s.wallet = DEFAULT_WALLET;
     return s;
 }
 

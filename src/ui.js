@@ -4,51 +4,10 @@
 
 import { t, getLocale } from './i18n.js';
 import { formatTokens, formatTokensFull, currencySymbol } from './currency.js';
+import { getWallet, renderWallet } from './wallets.js';
 
 const COIN_DURATION = 2700;
 const COIN_SPACING = 650;
-
-/**
- * Wallet icon. Gradient ids get a prefix so that several icons can live on one page.
- * @param {string} id Unique prefix
- */
-const walletSvg = (id) => `
-<svg class="tw-wallet-svg" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-  <defs>
-    <linearGradient id="${id}-body" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" style="stop-color: var(--tw-body-1)"/>
-      <stop offset="1" style="stop-color: var(--tw-body-2)"/>
-    </linearGradient>
-    <linearGradient id="${id}-flap" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" style="stop-color: var(--tw-flap-1)"/>
-      <stop offset="1" style="stop-color: var(--tw-flap-2)"/>
-    </linearGradient>
-    <radialGradient id="${id}-gold" cx="0.35" cy="0.32" r="0.85">
-      <stop offset="0" stop-color="#fff7d1"/>
-      <stop offset="0.45" stop-color="#f5c74e"/>
-      <stop offset="1" stop-color="#a5710e"/>
-    </radialGradient>
-    <linearGradient id="${id}-note" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c9f5d3"/>
-      <stop offset="1" stop-color="#5fb37a"/>
-    </linearGradient>
-  </defs>
-  <g class="tw-note">
-    <g transform="rotate(-9 30 17)">
-      <rect x="13" y="7" width="34" height="20" rx="2.5" fill="url(#${id}-note)"/>
-      <rect x="15.5" y="9.5" width="29" height="15" rx="1.5" fill="none" stroke="rgba(25,90,45,.35)" stroke-width=".8"/>
-      <circle cx="30" cy="17" r="3.6" fill="none" stroke="rgba(25,90,45,.45)" stroke-width="1.1"/>
-    </g>
-  </g>
-  <circle class="tw-peek-coin" cx="46" cy="16" r="6.2" fill="url(#${id}-gold)" stroke="#94640d" stroke-width=".9"/>
-  <rect x="5" y="18" width="54" height="38" rx="9" fill="url(#${id}-body)"/>
-  <path d="M11 20.6 H53" stroke="rgba(255,255,255,.30)" stroke-width="1.3" stroke-linecap="round"/>
-  <rect x="8.6" y="21.6" width="46.8" height="30.8" rx="6.4" fill="none" stroke="rgba(255,255,255,.30)" stroke-width=".9" stroke-dasharray="2.2 2"/>
-  <path class="tw-flap" d="M59 28.5 H40.5 a8.5 8.5 0 0 0 0 17 H59 Z" fill="url(#${id}-flap)"/>
-  <path d="M59 28.5 H40.5 a8.5 8.5 0 0 0 0 17 H59" fill="none" stroke="rgba(0,0,0,.18)" stroke-width=".8"/>
-  <circle cx="42" cy="37" r="3.7" fill="url(#${id}-gold)" stroke="rgba(0,0,0,.28)" stroke-width=".6"/>
-  <path d="M9.5 28 q0 -5.6 6.2 -5.6 h17" stroke="rgba(255,255,255,.38)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-</svg>`;
 
 function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -103,7 +62,7 @@ export class WalletUI {
         this.root = el('div', 'tw-wallet');
         this.button = el('button', 'tw-wallet-button');
         this.button.type = 'button';
-        this.button.innerHTML = walletSvg('tw-wallet');
+        this.renderedWallet = null;
         this.total = el('div', 'tw-wallet-total');
         this.root.append(this.button, this.total);
         document.body.appendChild(this.root);
@@ -120,8 +79,13 @@ export class WalletUI {
         const s = this.host.settings();
         const visible = s.enabled && s.showWallet;
         this.root.classList.toggle('tw-hidden', !visible);
-        this.root.dataset.skin = s.skin;
+        if (this.renderedWallet !== s.wallet) {
+            this.button.innerHTML = renderWallet(s.wallet, 'tw-wallet');
+            this.renderedWallet = s.wallet;
+        }
+        this.root.style.setProperty('--tw-glow', getWallet(s.wallet).glow);
         this.root.dataset.size = s.size;
+        this.root.classList.toggle('tw-shine', Boolean(s.shine));
         this.root.classList.toggle('tw-busy', this.busy);
         this.button.title = t('wallet_title');
         this.button.setAttribute('aria-label', t('title'));
@@ -395,7 +359,6 @@ export class WalletUI {
     openPanel() {
         if (this.panel) return;
         this.panel = el('div', 'tw-panel');
-        this.panel.dataset.skin = this.host.settings().skin;
         this.panel.setAttribute('role', 'dialog');
         document.body.appendChild(this.panel);
         this.renderPanel();
@@ -493,7 +456,7 @@ export class WalletUI {
 
         this.panel.innerHTML = `
             <div class="tw-panel-head">
-                <div class="tw-panel-title">${walletSvg('tw-panel')}<span>${escapeHtml(t('panel_title'))}</span></div>
+                <div class="tw-panel-title">${renderWallet(s.wallet, 'tw-panel')}<span>${escapeHtml(t('panel_title'))}</span></div>
                 <div class="tw-currency-switch" role="group">
                     <button type="button" data-currency="RUB" class="${s.currency === 'RUB' ? 'tw-active' : ''}">₽</button>
                     <button type="button" data-currency="USD" class="${s.currency === 'USD' ? 'tw-active' : ''}">$</button>
