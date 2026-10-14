@@ -20,15 +20,23 @@ import { FALLBACK_USD_RUB, fetchUsdRubRate, formatMoney } from './src/currency.j
 import { setLang, t, getLocale } from './src/i18n.js';
 import { WalletUI } from './src/ui.js';
 import { DEFAULT_WALLET, WALLETS } from './src/wallets.js';
+import {
+    EMBEDDING_CATALOG_SOURCE,
+    EMBEDDING_FALLBACK_PRICES,
+    PAID_EMBEDDING_SOURCES,
+    isOpenAiEmbeddingModel,
+    stripMessageOverhead,
+} from './src/embeddings.js';
 import { SettingsPanel, formatDate } from './src/settings-ui.js';
+import { ownExtensionFolder } from './src/initiator.js';
 
 const MODULE = 'token_wallet';
 const META_KEY = 'token_wallet';
 const EXTRA_KEY = 'token_wallet';
-const CATALOG_STORAGE_KEY = 'token_wallet_catalog_v1';
+const CATALOG_STORAGE_KEY = 'token_wallet_catalog_v2';
 const CATALOG_MAX_AGE = 12 * 60 * 60 * 1000;
 const RATE_MAX_AGE = 6 * 60 * 60 * 1000;
-const HISTORY_LIMIT = 40;
+const HISTORY_LIMIT = 80;
 const DAYS_LIMIT = 62;
 const LOG = '[Token Wallet]';
 
@@ -51,6 +59,8 @@ const DEFAULTS = Object.freeze({
     showMessageCost: true,
     showModelOnCoin: true,
     trackBackground: true,
+    trackEmbeddings: true,
+    embeddingCoins: false,
     position: null,
     customPrices: '',
     stats: null,
@@ -73,6 +83,10 @@ const pending = new Set();
 let awaitingMessage = [];
 /** The Generate() call currently running (text completion requests do not carry their type) */
 let activeGeneration = null;
+/** Vector Storage requests that follow each other (several insert batches) are merged into one history entry and coin */
+let embeddingBatch = null;
+const EMBEDDING_BATCH_DELAY = 2500;
+const embeddingFallbackCatalog = new PriceCatalog(EMBEDDING_FALLBACK_PRICES);
 
 const ui = new WalletUI({
     settings: () => settings(),
@@ -86,6 +100,7 @@ const ui = new WalletUI({
     history: () => settings().stats.history,
     openSettings: () => settingsPanel.open(),
     refreshAll: () => refreshAll(),
+    version: () => extensionVersion(),
 });
 
 const settingsPanel = new SettingsPanel({
@@ -101,12 +116,23 @@ const settingsPanel = new SettingsPanel({
     resetAllStats: () => resetAllStats(),
     resetPosition: () => ui.resetPosition(),
     testAnimation: () => testAnimation(),
+    version: () => extensionVersion(),
 });
 
 /* --------------------------------------------------------------- helpers */
 
 function ctx() {
     return SillyTavern.getContext();
+}
+
+/** Version from manifest.json, shown in the settings and the panel to check that an update was applied */
+function extensionVersion() {
+    const folder = ownExtensionFolder(import.meta.url);
+    try {
+        return (folder && ctx().getExtensionManifest?.(folder)?.version) || '';
+    } catch {
+        return '';
+    }
 }
 
 function emptyTotals() {
@@ -184,7 +210,9 @@ function customRules() {
 }
 
 function catalogSource(source) {
-    return source === 'tc:openrouter' ? 'openrouter' : source;
+    if (source === 'tc:openrouter') return 'openrouter';
+    if (source.startsWith('emb:')) return EMBEDDING_CATALOG_SOURCE[source.slice(4)] || source;
+    return source;
 }
 
 /**
@@ -208,7 +236,27 @@ function lookupPrice(source, models, preferCatalog = false) {
         }
         return null;
     };
-    return preferCatalog ? (fromCatalog() || fromCustom()) : (fromCustom() || fromCatalog());
+    const fromFallback = () => {
+        if (!source.startsWith('emb:')) return null;
+        for (const id of ids) {
+            const price = embeddingFallbackCatalog.find(catalogSource(source), id);
+            if (price) return price;
+        }
+        return null;
+    };
+    return (preferCatalog ? (fromCatalog() || fromCustom()) : (fromCustom() || fromCatalog())) || fromFallback();
+}
+
+/** Readable names of the extensions that sent a request (Summarize, Character Expressions...) */
+function initiatorName(info) {
+    const names = (info?.initiators || []).map((name) => {
+        try {
+            return ctx().getExtensionManifest?.(name)?.display_name || name.replace(/^third-party\//, '');
+        } catch {
+            return name.replace(/^third-party\//, '');
+        }
+    });
+    return names.length ? names.join(' → ') : null;
 }
 
 function guessTokens(text) {
@@ -227,6 +275,7 @@ function messageText(content) {
 
 function loadCatalogFromStorage() {
     try {
+        localStorage.removeItem('token_wallet_catalog_v1'); // older format without embedding models
         const raw = localStorage.getItem(CATALOG_STORAGE_KEY);
         if (!raw) return;
         const data = JSON.parse(raw);
@@ -239,20 +288,29 @@ function loadCatalogFromStorage() {
     }
 }
 
-async function fetchCatalogList() {
-    // 1) Public endpoint, straight from the browser (no API key needed)
+async function fetchPublicModels(query = '') {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
     try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        const response = await fetch('https://openrouter.ai/api/v1/models', { signal: controller.signal });
-        clearTimeout(timer);
-        if (response.ok) {
-            const json = await response.json();
-            if (Array.isArray(json?.data) && json.data.length) return json.data;
-        }
+        const response = await fetch(`https://openrouter.ai/api/v1/models${query}`, { signal: controller.signal });
+        if (!response.ok) return null;
+        const json = await response.json();
+        return Array.isArray(json?.data) && json.data.length ? json.data : null;
     } catch {
-        // blocked by the network, try through the SillyTavern server
+        return null;
+    } finally {
+        clearTimeout(timer);
     }
+}
+
+async function fetchCatalogList() {
+    // 1) Public endpoint, straight from the browser (no API key needed).
+    //    Embedding models (Vector Storage) are listed separately.
+    const [chatModels, embeddingModels] = await Promise.all([
+        fetchPublicModels(),
+        fetchPublicModels('?output_modalities=embeddings'),
+    ]);
+    if (chatModels) return [...chatModels, ...(embeddingModels || [])];
 
     // 2) Through the SillyTavern server (uses the OpenRouter key saved in SillyTavern)
     const response = await fetch('/api/backends/chat-completions/status', {
@@ -422,6 +480,13 @@ function onRequestStart(info) {
     const s = settings();
     let type = info.type;
 
+    if (info.kind === 'embedding') {
+        if (!s.trackEmbeddings) return null;
+        const source = info.embedding.source;
+        if (!PAID_EMBEDDING_SOURCES.has(source) && !findCustomPrice(customRules(), info.model)) return null;
+        return { id: ++recordSeq, t0: Date.now(), info, type: 'embedding', background: true, chatId: currentChatId() };
+    }
+
     if (info.kind === 'text') {
         // Only OpenRouter (or a backend the user priced manually) costs money in text completion mode
         if (info.source !== 'tc:openrouter' && !findCustomPrice(customRules(), info.model)) return null;
@@ -479,6 +544,7 @@ async function launchEstimatedInputCoin(record) {
         model: record.info.model,
         estimated: true,
         background: record.background,
+        via: initiatorName(record.info),
     });
 }
 
@@ -488,6 +554,10 @@ async function launchEstimatedInputCoin(record) {
  * @param {import('./src/interceptor.js').ResponseResult} result
  */
 async function onRequestFinish(record, result) {
+    if (record.info.kind === 'embedding') {
+        if (result.ok) addEmbedding(record).catch(error => console.warn(LOG, 'Could not count embeddings', error));
+        return;
+    }
     record.finishing = true;
     pending.delete(record);
     ui.setBusy(pending.size > 0);
@@ -511,10 +581,11 @@ async function finishRecord(record, result) {
     const hasOutput = Boolean(state.text || state.reasoning);
 
     if (!result.ok || (!hasUsage && !hasOutput)) {
-        // Nothing was generated (error, rejected request, stop before the first token)
+        // Nothing was generated (error, rejected request, stop before the first token): nothing is billed
         awaitingMessage = awaitingMessage.filter(r => r !== record);
+        recordFailure(record, result);
         if (record.inputCoin && record.inputCoin.usd > 0) {
-            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background });
+            ui.launchCoin({ kind: 'refund', usd: record.inputCoin.usd, background: record.background, via: initiatorName(record.info), model: state.model || record.info.model });
         }
         return;
     }
@@ -556,6 +627,7 @@ async function finishRecord(record, result) {
         usd: cost ? cost.usd : null,
         accuracy,
         aborted: Boolean(result.aborted),
+        via: initiatorName(record.info),
     };
     record.entry = entry;
 
@@ -574,6 +646,44 @@ async function finishRecord(record, result) {
     ui.update();
 }
 
+function pushHistory(entry) {
+    const history = settings().stats.history;
+    history.push(entry);
+    if (history.length > HISTORY_LIMIT) history.splice(0, history.length - HISTORY_LIMIT);
+}
+
+/**
+ * A request that produced nothing is not billed: it goes to the history only (not to the totals),
+ * so every coin that flew out can be traced back to a request.
+ */
+function recordFailure(record, result) {
+    const state = result.state;
+    const reason = String(result.httpError || state.error || (result.aborted ? t('aborted') : t('empty_reply')))
+        .replace(/\s+/g, ' ')
+        .slice(0, 160);
+    const entry = {
+        t: Date.now(),
+        model: state.model || record.info.model || '?',
+        source: record.info.source,
+        provider: state.provider || null,
+        type: record.type,
+        bg: record.background,
+        tokIn: 0,
+        tokOut: 0,
+        inUsd: 0,
+        outUsd: 0,
+        usd: 0,
+        accuracy: 'failed',
+        failed: true,
+        reason,
+        via: initiatorName(record.info),
+    };
+    console.info(LOG, 'Request produced nothing and was not billed:', { model: entry.model, type: entry.type, status: result.status, reason, via: entry.via });
+    pushHistory(entry);
+    save();
+    ui.update();
+}
+
 function recordStats(record, entry) {
     const s = settings();
     const stats = s.stats;
@@ -582,8 +692,7 @@ function recordStats(record, entry) {
     stats.days[key] = addToTotals(stats.days[key], entry);
     const days = Object.keys(stats.days).sort();
     while (days.length > DAYS_LIMIT) delete stats.days[days.shift()];
-    stats.history.push(entry);
-    if (stats.history.length > HISTORY_LIMIT) stats.history.splice(0, stats.history.length - HISTORY_LIMIT);
+    pushHistory(entry);
     save();
 
     // Per-chat totals live in the chat file itself
@@ -597,7 +706,7 @@ function recordStats(record, entry) {
 }
 
 function launchResultCoins(record, entry, cost) {
-    const common = { model: entry.model, background: record.background };
+    const common = { model: entry.model, background: record.background, via: entry.via };
 
     if (!cost) {
         ui.launchCoin({ kind: 'input', usd: null, tokens: entry.tokIn, ...common });
@@ -618,6 +727,84 @@ function launchResultCoins(record, entry, cost) {
 
     ui.launchCoin({ kind: 'input', usd: cost.inUsd, tokens: entry.tokIn, estimated, ...common });
     ui.launchCoin({ kind: 'output', usd: cost.outUsd, tokens: entry.tokOut, estimated, ...common });
+}
+
+/* ------------------------------------------------------------- embeddings */
+
+/** Exact token count of texts with OpenAI's cl100k tokenizer (used by text-embedding-3 / ada-002) */
+async function countEmbeddingTokens(texts) {
+    try {
+        const response = await fetch('/api/tokenizers/openai/count?model=gpt-4', {
+            method: 'POST',
+            headers: ctx().getRequestHeaders(),
+            body: JSON.stringify(texts.map(text => ({ content: text }))),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const json = await response.json();
+        const count = Number(json?.token_count);
+        if (!Number.isFinite(count)) throw new Error('Bad token count');
+        return { tokens: stripMessageOverhead(count, texts.length), exact: true };
+    } catch {
+        return { tokens: texts.reduce((sum, text) => sum + guessTokens(text), 0), exact: false };
+    }
+}
+
+/** Adds one Vector Storage request to the current batch */
+async function addEmbedding(record) {
+    const { texts } = record.info.embedding;
+    const [counted] = await Promise.all([countEmbeddingTokens(texts), catalogReady(3000)]);
+    const model = record.info.model || '?';
+    const key = `${record.info.source}|${model}|${record.chatId}`;
+
+    if (embeddingBatch && embeddingBatch.key !== key) flushEmbeddings();
+    if (!embeddingBatch) {
+        embeddingBatch = { key, record, model, tokens: 0, exact: true, requests: 0, timer: null };
+    }
+    embeddingBatch.tokens += counted.tokens;
+    embeddingBatch.exact = embeddingBatch.exact && counted.exact && isOpenAiEmbeddingModel(model);
+    embeddingBatch.requests += 1;
+    clearTimeout(embeddingBatch.timer);
+    embeddingBatch.timer = setTimeout(flushEmbeddings, EMBEDDING_BATCH_DELAY);
+}
+
+function flushEmbeddings() {
+    const batch = embeddingBatch;
+    embeddingBatch = null;
+    if (!batch) return;
+    clearTimeout(batch.timer);
+
+    const price = lookupPrice(batch.record.info.source, [batch.model]);
+    const usd = price ? batch.tokens * price.p + (price.rq || 0) * batch.requests : null;
+    const entry = {
+        t: Date.now(),
+        model: batch.model,
+        source: batch.record.info.source,
+        provider: null,
+        type: 'embedding',
+        bg: true,
+        tokIn: batch.tokens,
+        tokOut: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 0,
+        inUsd: usd,
+        outUsd: usd === null ? null : 0,
+        usd,
+        accuracy: usd === null ? 'unknown' : (batch.exact ? 'priced' : 'estimated'),
+        aborted: false,
+    };
+    recordStats(batch.record, entry);
+    // Vector Storage also re-syncs the chat on edits, deletions and swipes: counted silently unless asked for
+    if (settings().embeddingCoins) {
+        ui.launchCoin({
+            kind: 'embedding',
+            usd,
+            tokens: batch.tokens,
+            model: batch.model,
+            estimated: entry.accuracy === 'estimated',
+        });
+    }
+    ui.update();
 }
 
 /* ------------------------------------------------- per-message cost data */
@@ -751,11 +938,12 @@ async function resetAllStats() {
 }
 
 function testAnimation() {
-    const model = t('test_model');
+    // Clearly marked, so test coins are never mistaken for real spending
+    const label = t('coin_test');
     const inUsd = 0.0042 + Math.random() * 0.002;
     const outUsd = 0.011 + Math.random() * 0.004;
-    ui.launchCoin({ kind: 'input', usd: inUsd, tokens: 12840, model });
-    ui.launchCoin({ kind: 'output', usd: outUsd, tokens: 734, model });
+    ui.launchCoin({ kind: 'input', label, usd: inUsd, tokens: 12840 });
+    ui.launchCoin({ kind: 'output', label, usd: outUsd, tokens: 734 });
 }
 
 /* ------------------------------------------------------------------- init */

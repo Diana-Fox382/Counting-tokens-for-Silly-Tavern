@@ -40,6 +40,7 @@ export function shortModel(model) {
  * @property {() => any[]} history
  * @property {() => void} openSettings
  * @property {() => void} refreshAll Re-render everything after a settings change
+ * @property {() => string} version Extension version from manifest.json
  */
 
 export class WalletUI {
@@ -60,8 +61,10 @@ export class WalletUI {
         document.body.appendChild(this.layer);
 
         this.root = el('div', 'tw-wallet');
-        this.button = el('button', 'tw-wallet-button');
-        this.button.type = 'button';
+        // Not a <button>: SillyTavern themes restyle every button on the page (background, border, shadow)
+        this.button = el('div', 'tw-wallet-button');
+        this.button.setAttribute('role', 'button');
+        this.button.tabIndex = 0;
         this.renderedWallet = null;
         this.total = el('div', 'tw-wallet-total');
         this.root.append(this.button, this.total);
@@ -231,13 +234,15 @@ export class WalletUI {
 
     /**
      * @param {object} coin
-     * @param {'input'|'output'|'refund'} coin.kind
+     * @param {'input'|'output'|'refund'|'embedding'} coin.kind
      * @param {number|null} coin.usd Amount (null when the price is unknown)
      * @param {number} [coin.tokens]
      * @param {string} [coin.model]
      * @param {boolean} [coin.estimated]
      * @param {boolean} [coin.background]
      * @param {string} [coin.note] Second caption line
+     * @param {string} [coin.label] Caption instead of "input"/"output" (e.g. "embeddings")
+     * @param {string} [coin.via] Extension that sent a background request
      */
     launchCoin(coin) {
         const now = performance.now();
@@ -272,13 +277,14 @@ export class WalletUI {
         label.appendChild(amount);
 
         const caption = [];
-        caption.push(coin.kind === 'input' ? t('coin_input') : coin.kind === 'output' ? t('coin_output') : t('refund'));
+        const kindLabel = { input: t('coin_input'), output: t('coin_output'), refund: t('refund'), embedding: t('coin_embedding') }[coin.kind];
+        caption.push(coin.label || kindLabel);
         if (coin.kind !== 'refund' && coin.tokens !== undefined && coin.usd !== null && coin.usd !== undefined) {
             caption.push(`${formatTokens(coin.tokens)} ${t('tok')}`);
         }
         if (coin.usd === null || coin.usd === undefined) caption.push(t('no_price'));
-        if (coin.background) caption.push(t('bg'));
-        if (s.showModelOnCoin && coin.model && coin.kind !== 'refund') caption.push(shortModel(coin.model));
+        if (coin.background && !coin.label) caption.push(coin.via ? `${t('bg')}: ${coin.via}` : t('bg'));
+        if (s.showModelOnCoin && coin.model) caption.push(shortModel(coin.model));
         label.appendChild(el('div', 'tw-coin-caption', caption.join(' · ')));
         if (coin.note) label.appendChild(el('div', 'tw-coin-note', coin.note));
         if (coin.usd === null || coin.usd === undefined) label.title = t('no_price_hint');
@@ -293,8 +299,9 @@ export class WalletUI {
         const up = origin.rect.top > 190 ? -1 : 1;
         // Input coins fly higher and further than output coins, so two coins in a row do not overlap
         const isInput = coin.kind === 'input';
-        const drift = (leftSide ? -1 : 1) * (isInput ? 34 + Math.random() * 18 : 8 + Math.random() * 14);
-        const rise = isInput ? 172 + Math.random() * 14 : 138 + Math.random() * 14;
+        const isEmbedding = coin.kind === 'embedding';
+        const drift = (leftSide ? -1 : 1) * (isInput ? 34 + Math.random() * 18 : isEmbedding ? 22 + Math.random() * 10 : 8 + Math.random() * 14);
+        const rise = isInput ? 172 + Math.random() * 14 : isEmbedding ? 118 + Math.random() * 12 : 138 + Math.random() * 14;
 
         let keyframes;
         if (coin.kind === 'refund') {
@@ -415,7 +422,9 @@ export class WalletUI {
         if (!this.panel) return;
         const s = this.host.settings();
         const history = this.host.history();
-        const last = history[history.length - 1];
+        // Embeddings follow every reply and failed requests cost nothing: the block shows the last billed reply
+        const last = [...history].reverse().find(item => item.type !== 'embedding' && !item.failed)
+            || [...history].reverse().find(item => !item.failed);
         const money = (usd) => (usd === null || usd === undefined ? '—' : this.host.money(usd));
 
         let lastHtml = `<div class="tw-empty">${escapeHtml(t('no_requests'))}</div>`;
@@ -442,12 +451,36 @@ export class WalletUI {
                 <div class="tw-accuracy tw-accuracy--${escapeHtml(last.accuracy)}">${last.accuracy === 'exact' ? '✓' : last.accuracy === 'unknown' ? '?' : '≈'} ${escapeHtml(accuracy)}</div>`;
         }
 
-        const historyHtml = history.slice(-12).reverse().map(item => `
-            <div class="tw-hist" title="${escapeHtml(`${item.model}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`)}">
+        // Embeddings come in series (every edit/swipe re-syncs Vector Storage): consecutive ones share a row
+        const rows = [];
+        for (const item of [...history].reverse()) {
+            const previous = rows[rows.length - 1];
+            if (previous && item.type === 'embedding' && previous.type === 'embedding' && previous.model === item.model) {
+                previous.count += 1;
+                previous.tokIn += item.tokIn || 0;
+                previous.usd = previous.usd === null || item.usd === null ? null : previous.usd + item.usd;
+                previous.inUsd = previous.usd;
+                continue;
+            }
+            if (rows.length >= 12) break;
+            rows.push({ ...item, count: 1 });
+        }
+
+        const historyHtml = rows.map((item) => {
+            const tags = [];
+            if (item.type === 'embedding') tags.push(item.count > 1 ? `${t('tag_embedding')} ×${item.count}` : t('tag_embedding'));
+            else if (item.bg) tags.push(item.via ? shortTag(item.via) : t('bg'));
+            const source = item.via ? `\n${t('sent_by')}: ${item.via}` : '';
+            const tooltip = item.failed
+                ? `${item.model}\n${typeLabel(item)}${source}\n${t('failed_hint')}\n${t('error')}: ${item.reason || '?'}\n${t('server_log_hint')}`
+                : `${item.model}${source}\n${t('input')}: ${formatTokensFull(item.tokIn)} ${t('tok')} — ${money(item.inUsd)}\n${t('output')}: ${formatTokensFull(item.tokOut)} ${t('tok')} — ${money(item.outUsd)}`;
+            return `
+            <div class="tw-hist${item.failed ? ' tw-hist--failed' : ''}" title="${escapeHtml(tooltip)}">
                 <span class="tw-dim">${escapeHtml(formatTime(item.t))}</span>
-                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${item.bg ? ` <span class="tw-tag">${escapeHtml(t('bg'))}</span>` : ''}</span>
-                <span class="tw-num">${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}</span>
-            </div>`).join('');
+                <span class="tw-hist-model">${escapeHtml(shortModel(item.model))}${tags.map(tag => ` <span class="tw-tag">${escapeHtml(tag)}</span>`).join('')}</span>
+                <span class="tw-num">${item.failed ? escapeHtml(t('tag_failed')) : `${item.accuracy === 'estimated' ? '≈' : ''}${escapeHtml(money(item.usd))}`}</span>
+            </div>`;
+        }).join('');
 
         const rateText = t('rate_line', { rate: this.host.rate().toLocaleString(getLocale(), { maximumFractionDigits: 2 }) });
         const rateLine = s.currency === 'RUB'
@@ -458,11 +491,11 @@ export class WalletUI {
             <div class="tw-panel-head">
                 <div class="tw-panel-title">${renderWallet(s.wallet, 'tw-panel')}<span>${escapeHtml(t('panel_title'))}</span></div>
                 <div class="tw-currency-switch" role="group">
-                    <button type="button" data-currency="RUB" class="${s.currency === 'RUB' ? 'tw-active' : ''}">₽</button>
-                    <button type="button" data-currency="USD" class="${s.currency === 'USD' ? 'tw-active' : ''}">$</button>
+                    <span role="button" tabindex="0" data-currency="RUB" class="tw-cur${s.currency === 'RUB' ? ' tw-active' : ''}">₽</span>
+                    <span role="button" tabindex="0" data-currency="USD" class="tw-cur${s.currency === 'USD' ? ' tw-active' : ''}">$</span>
                 </div>
-                <button type="button" class="tw-icon-btn tw-settings-btn" title="${escapeHtml(t('settings'))}"><i class="fa-solid fa-gear"></i></button>
-                <button type="button" class="tw-icon-btn tw-close-btn" title="${escapeHtml(t('close'))}"><i class="fa-solid fa-xmark"></i></button>
+                <span role="button" tabindex="0" class="tw-icon-btn tw-settings-btn" title="${escapeHtml(t('settings'))}"><i class="fa-solid fa-gear"></i></span>
+                <span role="button" tabindex="0" class="tw-icon-btn tw-close-btn" title="${escapeHtml(t('close'))}"><i class="fa-solid fa-xmark"></i></span>
             </div>
             <div class="tw-section">
                 <div class="tw-section-title">${escapeHtml(t('last_request'))}</div>
@@ -475,6 +508,7 @@ export class WalletUI {
                 ${rateLine}
             </div>
             ${historyHtml ? `<div class="tw-section"><div class="tw-section-title">${escapeHtml(t('history'))}</div><div class="tw-hist-list">${historyHtml}</div></div>` : ''}
+            ${this.host.version() ? `<div class="tw-version tw-panel-version">v${escapeHtml(this.host.version())}</div>` : ''}
         `;
 
         this.panel.querySelectorAll('[data-currency]').forEach(button => {
@@ -489,6 +523,7 @@ export class WalletUI {
             this.closePanel();
             this.host.openSettings();
         });
+        activateWithKeyboard(this.panel);
         this.positionPanel();
     }
 
@@ -549,7 +584,29 @@ function accuracyText(entry) {
     }
 }
 
+/**
+ * Enter / Space on elements with role="button" act as a click (they are not real buttons, see above).
+ * @param {HTMLElement} root
+ */
+export function activateWithKeyboard(root) {
+    root.querySelectorAll('[role="button"], [role="radio"]').forEach((node) => {
+        node.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                /** @type {HTMLElement} */ (node).click();
+            }
+        });
+    });
+}
+
+/** Extension name for a small history tag */
+function shortTag(name) {
+    const last = String(name).split(' → ')[0];
+    return last.length > 20 ? `${last.slice(0, 19)}…` : last;
+}
+
 function typeLabel(entry) {
+    if (entry.type === 'embedding') return t('type_embedding');
     if (entry.bg) return t('type_background');
     const key = `type_${entry.type}`;
     const label = t(key);
