@@ -4,6 +4,7 @@
 
 import { t, LANGUAGES, getLocale, getLang } from './i18n.js';
 import { WALLETS } from './wallets.js';
+import { activateWithKeyboard } from './ui.js';
 
 const SIZES = ['s', 'm', 'l'];
 
@@ -36,6 +37,7 @@ function checkbox(id, label, checked) {
  * @property {() => void} resetAllStats
  * @property {() => void} resetPosition
  * @property {() => void} testAnimation
+ * @property {() => string} version
  */
 
 export class SettingsPanel {
@@ -79,7 +81,7 @@ export class SettingsPanel {
         this.container.innerHTML = `
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b><i class="fa-solid fa-wallet"></i> ${escapeHtml(t('title'))}</b>
+                <b><i class="fa-solid fa-wallet"></i> ${escapeHtml(t('title'))}${this.host.version() ? ` <small class="tw-version">v${escapeHtml(this.host.version())}</small>` : ''}</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content tw-settings">
@@ -124,11 +126,11 @@ export class SettingsPanel {
                 <div class="tw-block-label">${escapeHtml(t('wallet_style'))}</div>
                 <div class="tw-wallet-picker" role="radiogroup">
                     ${WALLETS.map((wallet, index) => `
-                    <button type="button" class="tw-wallet-option${s.wallet === wallet.id ? ' tw-active' : ''}" data-wallet="${escapeHtml(wallet.id)}"
-                        role="radio" aria-checked="${s.wallet === wallet.id}" title="${escapeHtml(wallet.hint[getLang()] || wallet.hint.en)}">
+                    <div class="tw-wallet-option${s.wallet === wallet.id ? ' tw-active' : ''}" data-wallet="${escapeHtml(wallet.id)}"
+                        role="radio" tabindex="0" aria-checked="${s.wallet === wallet.id}" title="${escapeHtml(wallet.hint[getLang()] || wallet.hint.en)}">
                         ${wallet.render(`tw-pick-${index}`)}
                         <span>${escapeHtml(wallet.name[getLang()] || wallet.name.en)}</span>
-                    </button>`).join('')}
+                    </div>`).join('')}
                 </div>
                 <div class="tw-settings-grid">
                     <label for="tw_size">${escapeHtml(t('size'))}</label>
@@ -142,6 +144,9 @@ export class SettingsPanel {
                 ${checkbox('tw_show_message_cost', t('show_message_cost'), s.showMessageCost)}
                 ${checkbox('tw_show_model', t('show_model'), s.showModelOnCoin)}
                 ${checkbox('tw_track_background', t('track_background'), s.trackBackground)}
+                ${checkbox('tw_track_embeddings', t('track_embeddings'), s.trackEmbeddings)}
+                ${checkbox('tw_embedding_coins', t('embedding_coins'), s.embeddingCoins)}
+                <small class="tw-status">${escapeHtml(t('embedding_hint'))}</small>
                 <div class="tw-buttons">
                     <div id="tw_test" class="menu_button menu_button_icon"><i class="fa-solid fa-coins"></i><span>${escapeHtml(t('test_coin'))}</span></div>
                     <div id="tw_reset_position" class="menu_button menu_button_icon"><i class="fa-solid fa-arrows-to-dot"></i><span>${escapeHtml(t('reset_position'))}</span></div>
@@ -219,6 +224,7 @@ export class SettingsPanel {
                 this.host.testAnimation();
             });
         });
+        activateWithKeyboard(this.container.querySelector('.tw-wallet-picker'));
         onChange('tw_shine', el => { s().shine = el.checked; });
         onChange('tw_size', el => { s().size = el.value; });
         onChange('tw_show_wallet', el => { s().showWallet = el.checked; });
@@ -226,6 +232,8 @@ export class SettingsPanel {
         onChange('tw_show_message_cost', el => { s().showMessageCost = el.checked; });
         onChange('tw_show_model', el => { s().showModelOnCoin = el.checked; });
         onChange('tw_track_background', el => { s().trackBackground = el.checked; });
+        onChange('tw_track_embeddings', el => { s().trackEmbeddings = el.checked; });
+        onChange('tw_embedding_coins', el => { s().embeddingCoins = el.checked; });
 
         $('tw_custom_prices')?.addEventListener('input', (event) => {
             s().customPrices = event.target.value;
