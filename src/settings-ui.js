@@ -36,6 +36,7 @@ function checkbox(id, label, checked) {
  * @property {() => void} resetAllStats
  * @property {() => void} resetPosition
  * @property {() => void} testAnimation
+ * @property {() => string} version
  */
 
 export class SettingsPanel {
@@ -79,7 +80,7 @@ export class SettingsPanel {
         this.container.innerHTML = `
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b><i class="fa-solid fa-wallet"></i> ${escapeHtml(t('title'))}</b>
+                <b><i class="fa-solid fa-wallet"></i> ${escapeHtml(t('title'))}${this.host.version() ? ` <small class="tw-version">v${escapeHtml(this.host.version())}</small>` : ''}</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content tw-settings">

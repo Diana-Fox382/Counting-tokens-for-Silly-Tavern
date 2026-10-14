@@ -28,6 +28,7 @@ import {
     stripMessageOverhead,
 } from './src/embeddings.js';
 import { SettingsPanel, formatDate } from './src/settings-ui.js';
+import { ownExtensionFolder } from './src/initiator.js';
 
 const MODULE = 'token_wallet';
 const META_KEY = 'token_wallet';
@@ -99,6 +100,7 @@ const ui = new WalletUI({
     history: () => settings().stats.history,
     openSettings: () => settingsPanel.open(),
     refreshAll: () => refreshAll(),
+    version: () => extensionVersion(),
 });
 
 const settingsPanel = new SettingsPanel({
@@ -114,12 +116,23 @@ const settingsPanel = new SettingsPanel({
     resetAllStats: () => resetAllStats(),
     resetPosition: () => ui.resetPosition(),
     testAnimation: () => testAnimation(),
+    version: () => extensionVersion(),
 });
 
 /* --------------------------------------------------------------- helpers */
 
 function ctx() {
     return SillyTavern.getContext();
+}
+
+/** Version from manifest.json, shown in the settings and the panel to check that an update was applied */
+function extensionVersion() {
+    const folder = ownExtensionFolder(import.meta.url);
+    try {
+        return (folder && ctx().getExtensionManifest?.(folder)?.version) || '';
+    } catch {
+        return '';
+    }
 }
 
 function emptyTotals() {
