@@ -581,6 +581,17 @@
     font-size: 0.88em;
 }
 
+.tw-version {
+    font-weight: 400;
+    opacity: 0.55;
+}
+
+.tw-panel-version {
+    margin-top: 8px;
+    font-size: 0.75em;
+    text-align: right;
+}
+
 .tw-hist--failed {
     opacity: 0.6;
 }

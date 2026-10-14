@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Diana-Fox382",
-    "version": "1.0.0",
+    "version": "1.6.0",
     "homePage": "https://github.com/Diana-Fox382/Counting-tokens-for-Silly-Tavern",
     "auto_update": true,
     "minimum_client_version": "1.12.0"

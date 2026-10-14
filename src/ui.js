@@ -40,6 +40,7 @@ export function shortModel(model) {
  * @property {() => any[]} history
  * @property {() => void} openSettings
  * @property {() => void} refreshAll Re-render everything after a settings change
+ * @property {() => string} version Extension version from manifest.json
  */
 
 export class WalletUI {
@@ -505,6 +506,7 @@ export class WalletUI {
                 ${rateLine}
             </div>
             ${historyHtml ? `<div class="tw-section"><div class="tw-section-title">${escapeHtml(t('history'))}</div><div class="tw-hist-list">${historyHtml}</div></div>` : ''}
+            ${this.host.version() ? `<div class="tw-version tw-panel-version">v${escapeHtml(this.host.version())}</div>` : ''}
         `;
 
         this.panel.querySelectorAll('[data-currency]').forEach(button => {
