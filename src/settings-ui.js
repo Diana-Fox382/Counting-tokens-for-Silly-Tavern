@@ -4,6 +4,7 @@
 
 import { t, LANGUAGES, getLocale, getLang } from './i18n.js';
 import { WALLETS } from './wallets.js';
+import { activateWithKeyboard } from './ui.js';
 
 const SIZES = ['s', 'm', 'l'];
 
@@ -125,11 +126,11 @@ export class SettingsPanel {
                 <div class="tw-block-label">${escapeHtml(t('wallet_style'))}</div>
                 <div class="tw-wallet-picker" role="radiogroup">
                     ${WALLETS.map((wallet, index) => `
-                    <button type="button" class="tw-wallet-option${s.wallet === wallet.id ? ' tw-active' : ''}" data-wallet="${escapeHtml(wallet.id)}"
-                        role="radio" aria-checked="${s.wallet === wallet.id}" title="${escapeHtml(wallet.hint[getLang()] || wallet.hint.en)}">
+                    <div class="tw-wallet-option${s.wallet === wallet.id ? ' tw-active' : ''}" data-wallet="${escapeHtml(wallet.id)}"
+                        role="radio" tabindex="0" aria-checked="${s.wallet === wallet.id}" title="${escapeHtml(wallet.hint[getLang()] || wallet.hint.en)}">
                         ${wallet.render(`tw-pick-${index}`)}
                         <span>${escapeHtml(wallet.name[getLang()] || wallet.name.en)}</span>
-                    </button>`).join('')}
+                    </div>`).join('')}
                 </div>
                 <div class="tw-settings-grid">
                     <label for="tw_size">${escapeHtml(t('size'))}</label>
@@ -223,6 +224,7 @@ export class SettingsPanel {
                 this.host.testAnimation();
             });
         });
+        activateWithKeyboard(this.container.querySelector('.tw-wallet-picker'));
         onChange('tw_shine', el => { s().shine = el.checked; });
         onChange('tw_size', el => { s().size = el.value; });
         onChange('tw_show_wallet', el => { s().showWallet = el.checked; });

@@ -61,8 +61,10 @@ export class WalletUI {
         document.body.appendChild(this.layer);
 
         this.root = el('div', 'tw-wallet');
-        this.button = el('button', 'tw-wallet-button');
-        this.button.type = 'button';
+        // Not a <button>: SillyTavern themes restyle every button on the page (background, border, shadow)
+        this.button = el('div', 'tw-wallet-button');
+        this.button.setAttribute('role', 'button');
+        this.button.tabIndex = 0;
         this.renderedWallet = null;
         this.total = el('div', 'tw-wallet-total');
         this.root.append(this.button, this.total);
@@ -489,11 +491,11 @@ export class WalletUI {
             <div class="tw-panel-head">
                 <div class="tw-panel-title">${renderWallet(s.wallet, 'tw-panel')}<span>${escapeHtml(t('panel_title'))}</span></div>
                 <div class="tw-currency-switch" role="group">
-                    <button type="button" data-currency="RUB" class="${s.currency === 'RUB' ? 'tw-active' : ''}">₽</button>
-                    <button type="button" data-currency="USD" class="${s.currency === 'USD' ? 'tw-active' : ''}">$</button>
+                    <span role="button" tabindex="0" data-currency="RUB" class="tw-cur${s.currency === 'RUB' ? ' tw-active' : ''}">₽</span>
+                    <span role="button" tabindex="0" data-currency="USD" class="tw-cur${s.currency === 'USD' ? ' tw-active' : ''}">$</span>
                 </div>
-                <button type="button" class="tw-icon-btn tw-settings-btn" title="${escapeHtml(t('settings'))}"><i class="fa-solid fa-gear"></i></button>
-                <button type="button" class="tw-icon-btn tw-close-btn" title="${escapeHtml(t('close'))}"><i class="fa-solid fa-xmark"></i></button>
+                <span role="button" tabindex="0" class="tw-icon-btn tw-settings-btn" title="${escapeHtml(t('settings'))}"><i class="fa-solid fa-gear"></i></span>
+                <span role="button" tabindex="0" class="tw-icon-btn tw-close-btn" title="${escapeHtml(t('close'))}"><i class="fa-solid fa-xmark"></i></span>
             </div>
             <div class="tw-section">
                 <div class="tw-section-title">${escapeHtml(t('last_request'))}</div>
@@ -521,6 +523,7 @@ export class WalletUI {
             this.closePanel();
             this.host.openSettings();
         });
+        activateWithKeyboard(this.panel);
         this.positionPanel();
     }
 
@@ -579,6 +582,21 @@ function accuracyText(entry) {
         case 'estimated': return t('estimated');
         default: return t('no_price_hint');
     }
+}
+
+/**
+ * Enter / Space on elements with role="button" act as a click (they are not real buttons, see above).
+ * @param {HTMLElement} root
+ */
+export function activateWithKeyboard(root) {
+    root.querySelectorAll('[role="button"], [role="radio"]').forEach((node) => {
+        node.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                /** @type {HTMLElement} */ (node).click();
+            }
+        });
+    });
 }
 
 /** Extension name for a small history tag */
