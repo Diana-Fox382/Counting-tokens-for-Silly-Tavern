@@ -152,25 +152,21 @@
     50% { opacity: 1; }
 }
 
-/* Soft glow while a request is in progress */
-.tw-wallet-button::before {
-    content: '';
-    position: absolute;
-    inset: 22% 6% 8% 6%;
-    z-index: -1;
-    border-radius: 28%;
-    opacity: 0;
-    box-shadow: 0 0 18px 6px var(--tw-glow);
-    transition: opacity 0.3s ease;
+/*
+ * Soft glow while a request is in progress. It is a drop-shadow of the icon itself, so it follows
+ * the wallet's outline: a box-shadow on a rectangle left a dark rectangle around narrow designs.
+ */
+.tw-wallet .tw-wallet-svg {
+    transition: filter 0.3s ease;
 }
 
-.tw-wallet.tw-busy .tw-wallet-button::before {
+.tw-wallet.tw-busy .tw-wallet-svg {
     animation: tw-breathe 1.6s ease-in-out infinite;
 }
 
 @keyframes tw-breathe {
-    0%, 100% { opacity: 0.25; }
-    50% { opacity: 1; }
+    0%, 100% { filter: drop-shadow(0 0 1px var(--tw-glow)) drop-shadow(0 0 2px var(--tw-glow)); }
+    50% { filter: drop-shadow(0 0 2px var(--tw-glow)) drop-shadow(0 0 7px var(--tw-glow)); }
 }
 
 .tw-wallet-total {
@@ -400,10 +396,14 @@
 @media (prefers-reduced-motion: reduce) {
     .tw-coin,
     .tw-wallet.tw-pop .tw-wallet-button,
-    .tw-wallet.tw-busy .tw-wallet-button::before,
+    .tw-wallet.tw-busy .tw-wallet-svg,
     .tw-wallet.tw-shine .tw-glint,
     .tw-wallet.tw-shine .tw-twinkle {
         animation: none;
+    }
+
+    .tw-wallet.tw-busy .tw-wallet-svg {
+        filter: drop-shadow(0 0 2px var(--tw-glow)) drop-shadow(0 0 5px var(--tw-glow));
     }
 }
 

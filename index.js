@@ -38,6 +38,8 @@ const CATALOG_MAX_AGE = 12 * 60 * 60 * 1000;
 const RATE_MAX_AGE = 6 * 60 * 60 * 1000;
 const HISTORY_LIMIT = 80;
 const DAYS_LIMIT = 62;
+/** A generation still running after this long is considered lost (only for the busy glow) */
+const PENDING_TIMEOUT = 15 * 60 * 1000;
 const LOG = '[Token Wallet]';
 
 /** Sources that are always billed. `custom` and local text completion backends are not. */
@@ -993,6 +995,15 @@ function init() {
     on(events.GENERATION_ENDED, () => { activeGeneration = null; });
     on(events.GENERATION_STOPPED, () => { activeGeneration = null; });
     on(events.SETTINGS_UPDATED, () => ui.update());
+
+    // Safety net: a request that never reports back must not keep the wallet glowing forever
+    setInterval(() => {
+        const now = Date.now();
+        for (const record of pending) {
+            if (now - record.t0 > PENDING_TIMEOUT) pending.delete(record);
+        }
+        ui.setBusy(pending.size > 0);
+    }, 30 * 1000);
 
     refreshCatalog().catch(() => { });
     refreshRate().catch(() => { });
